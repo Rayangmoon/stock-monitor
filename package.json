@@ -2,7 +2,7 @@
   "name": "stock-monitor",
   "displayName": "股票监控助手",
   "description": "A股实时监控，最高涨幅回落提醒",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "moon",
   "repository": {
     "type": "git",
