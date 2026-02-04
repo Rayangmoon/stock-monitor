@@ -301,7 +301,7 @@ export class StockMonitor {
     const message =
       `【${config.name}】回落提醒\n` +
       `最高涨幅: ${state.maxRisePercent.toFixed(2)}%\n` +
-      `当前涨幅: ${state.currentRisePercent.toFixed(2)}%\n` +
+      `当前涨幅: ${state.changePercent.toFixed(2)}%\n` +
       `回落幅度: ${state.fallbackPercent.toFixed(2)}%\n` +
       `当前价格: ${state.currentPrice.toFixed(2)}`;
 
@@ -330,7 +330,7 @@ export class StockMonitor {
       `最高价: ${state.highestPrice.toFixed(2)}\n` +
       `当前价: ${state.currentPrice.toFixed(2)}\n` +
       `最高涨幅: ${state.maxRisePercent.toFixed(2)}%\n` +
-      `当前涨幅: ${state.currentRisePercent.toFixed(2)}%\n` +
+      `当前涨幅: ${state.changePercent.toFixed(2)}%\n` +
       `回落幅度: ${state.fallbackPercent.toFixed(2)}%\n` +
       `回落阈值: ${config.fallbackThreshold.toFixed(2)}%`;
 

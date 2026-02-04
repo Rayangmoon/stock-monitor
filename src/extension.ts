@@ -118,7 +118,7 @@ export function activate(context: vscode.ExtensionContext) {
       const items = configs.map(config => {
         const state = states.find(s => s.code === config.code);
         const status = state
-          ? `当前: ${state.currentRisePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
+          ? `当前: ${state.changePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
           : '暂无数据';
 
         return {
@@ -218,7 +218,7 @@ function showStockDetail(code: string): void {
     detail += `最高价: ${state.highestPrice.toFixed(2)}\n`;
     detail += `当前价: ${state.currentPrice.toFixed(2)}\n`;
     detail += `最高涨幅: ${state.maxRisePercent.toFixed(2)}%\n`;
-    detail += `当前涨幅: ${state.currentRisePercent.toFixed(2)}%\n`;
+    detail += `当前涨幅: ${state.changePercent.toFixed(2)}%\n`;
     detail += `回落幅度: ${state.fallbackPercent.toFixed(2)}%\n`;
   } else {
     detail += `\n暂无实时数据`;
