@@ -1,0 +1,238 @@
+import * as vscode from 'vscode';
+import { StockMonitor } from './monitor/stockMonitor';
+import { StatusBarManager } from './utils/statusBar';
+
+let monitor: StockMonitor;
+let statusBarManager: StatusBarManager;
+let updateTimer: NodeJS.Timeout | null = null;
+
+export function activate(context: vscode.ExtensionContext) {
+  console.log('股票监控插件已激活');
+
+  // 初始化监控器
+  monitor = new StockMonitor(context);
+  statusBarManager = new StatusBarManager(monitor);
+
+  // 注册命令：添加监控股票
+  const addStockCommand = vscode.commands.registerCommand(
+    'stock-monitor.addStock',
+    async () => {
+      const code = await vscode.window.showInputBox({
+        prompt: '请输入股票代码（如：600000、000001）',
+        placeHolder: '股票代码',
+        validateInput: (value) => {
+          if (!value || !/^\d{6}$/.test(value)) {
+            return '请输入6位数字的股票代码';
+          }
+          return null;
+        }
+      });
+
+      if (!code) {
+        return;
+      }
+
+      const name = await vscode.window.showInputBox({
+        prompt: '请输入股票名称',
+        placeHolder: '股票名称'
+      });
+
+      if (!name) {
+        return;
+      }
+
+      const thresholdStr = await vscode.window.showInputBox({
+        prompt: '请输入回落提醒阈值（%）',
+        placeHolder: '默认为2%',
+        validateInput: (value) => {
+          if (value && (isNaN(Number(value)) || Number(value) <= 0)) {
+            return '请输入大于0的数字';
+          }
+          return null;
+        }
+      });
+
+      const threshold = thresholdStr ? Number(thresholdStr) : undefined;
+
+      const success = await monitor.addStock(code, name, threshold);
+      if (success) {
+        vscode.window.showInformationMessage(`已添加监控: ${name} (${code})`);
+        statusBarManager.update();
+
+        // 如果监控未启动，询问是否启动
+        if (!monitor.isMonitoring()) {
+          const start = await vscode.window.showInformationMessage(
+            '监控已停止，是否立即启动？',
+            '启动',
+            '稍后'
+          );
+          if (start === '启动') {
+            vscode.commands.executeCommand('stock-monitor.toggleMonitor');
+          }
+        }
+      } else {
+        vscode.window.showErrorMessage(`添加失败: 无法获取股票 ${code} 的数据`);
+      }
+    }
+  );
+
+  // 注册命令：移除监控股票
+  const removeStockCommand = vscode.commands.registerCommand(
+    'stock-monitor.removeStock',
+    async () => {
+      const configs = monitor.getConfigs();
+      if (configs.length === 0) {
+        vscode.window.showInformationMessage('暂无监控股票');
+        return;
+      }
+
+      const items = configs.map(config => ({
+        label: `${config.name} (${config.code})`,
+        description: `回落阈值: ${config.fallbackThreshold}%`,
+        code: config.code
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: '选择要移除的股票'
+      });
+
+      if (selected) {
+        await monitor.removeStock(selected.code);
+        vscode.window.showInformationMessage(`已移除监控: ${selected.label}`);
+        statusBarManager.update();
+      }
+    }
+  );
+
+  // 注册命令：查看监控列表
+  const showStocksCommand = vscode.commands.registerCommand(
+    'stock-monitor.showStocks',
+    () => {
+      const configs = monitor.getConfigs();
+      if (configs.length === 0) {
+        vscode.window.showInformationMessage('暂无监控股票，请先添加');
+        return;
+      }
+
+      const states = monitor.getAllStates();
+      const items = configs.map(config => {
+        const state = states.find(s => s.code === config.code);
+        const status = state
+          ? `当前: ${state.currentRisePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
+          : '暂无数据';
+
+        return {
+          label: `${config.name} (${config.code})`,
+          description: status,
+          detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'}`,
+          code: config.code
+        };
+      });
+
+      vscode.window.showQuickPick(items, {
+        placeHolder: '监控列表'
+      }).then(selected => {
+        if (selected) {
+          showStockDetail(selected.code);
+        }
+      });
+    }
+  );
+
+  // 注册命令：启动/停止监控
+  const toggleMonitorCommand = vscode.commands.registerCommand(
+    'stock-monitor.toggleMonitor',
+    () => {
+      if (monitor.isMonitoring()) {
+        monitor.stop();
+        if (updateTimer) {
+          clearInterval(updateTimer);
+          updateTimer = null;
+        }
+        vscode.window.showInformationMessage('股票监控已停止');
+      } else {
+        monitor.start();
+        // 启动状态栏更新定时器
+        updateTimer = setInterval(() => {
+          statusBarManager.update();
+        }, 1000);
+        vscode.window.showInformationMessage('股票监控已启动');
+      }
+      statusBarManager.update();
+    }
+  );
+
+  // 监听配置变化
+  const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
+    if (e.affectsConfiguration('stockMonitor')) {
+      // 重启监控以应用新配置
+      if (monitor.isMonitoring()) {
+        monitor.stop();
+        monitor.start();
+      }
+    }
+  });
+
+  // 注册所有命令和监听器
+  context.subscriptions.push(
+    addStockCommand,
+    removeStockCommand,
+    showStocksCommand,
+    toggleMonitorCommand,
+    configChangeListener,
+    statusBarManager
+  );
+
+  // 自动启动监控
+  const configs = monitor.getConfigs();
+  if (configs.length > 0) {
+    monitor.start();
+    updateTimer = setInterval(() => {
+      statusBarManager.update();
+    }, 1000);
+  }
+
+  statusBarManager.update();
+}
+
+/**
+ * 显示股票详情
+ */
+function showStockDetail(code: string): void {
+  const configs = monitor.getConfigs();
+  const config = configs.find(c => c.code === code);
+  const state = monitor.getState(code);
+
+  if (!config) {
+    return;
+  }
+
+  let detail = `股票代码: ${code}\n`;
+  detail += `股票名称: ${config.name}\n`;
+  detail += `回落阈值: ${config.fallbackThreshold}%\n`;
+  detail += `状态: ${config.enabled ? '已启用' : '已禁用'}\n`;
+
+  if (state) {
+    detail += `\n实时数据:\n`;
+    detail += `开盘价: ${state.openPrice.toFixed(2)}\n`;
+    detail += `最高价: ${state.highestPrice.toFixed(2)}\n`;
+    detail += `当前价: ${state.currentPrice.toFixed(2)}\n`;
+    detail += `最高涨幅: ${state.maxRisePercent.toFixed(2)}%\n`;
+    detail += `当前涨幅: ${state.currentRisePercent.toFixed(2)}%\n`;
+    detail += `回落幅度: ${state.fallbackPercent.toFixed(2)}%\n`;
+  } else {
+    detail += `\n暂无实时数据`;
+  }
+
+  vscode.window.showInformationMessage(detail);
+}
+
+export function deactivate() {
+  if (monitor) {
+    monitor.stop();
+  }
+  if (updateTimer) {
+    clearInterval(updateTimer);
+  }
+  console.log('股票监控插件已停用');
+}

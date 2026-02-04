@@ -1,0 +1,15 @@
+{
+  // 股票监控插件配置示例
+  // 将此配置添加到 VSCode 的 settings.json 中
+
+  // 刷新间隔（毫秒）- 建议 3000-5000
+  "stockMonitor.refreshInterval": 3000,
+
+  // 默认回落提醒阈值（%）- 建议 1-5
+  "stockMonitor.fallbackThreshold": 2,
+
+  // 行情数据源
+  // "sina" - 新浪财经（推荐，稳定）
+  // "xueqiu" - 雪球（可能需要认证）
+  "stockMonitor.apiSource": "sina"
+}

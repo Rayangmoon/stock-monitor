@@ -1,0 +1,93 @@
+{
+  "name": "stock-monitor",
+  "displayName": "股票监控助手",
+  "description": "A股实时监控，最高涨幅回落提醒",
+  "version": "0.0.1",
+  "publisher": "moon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rayangmoon/stock-monitor"
+  },
+  "bugs": {
+    "url": "https://github.com/Rayangmoon/stock-monitor/issues"
+  },
+  "homepage": "https://github.com/Rayangmoon/stock-monitor#readme",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "股票",
+    "监控",
+    "A股",
+    "提醒"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "stock-monitor.addStock",
+        "title": "添加监控股票"
+      },
+      {
+        "command": "stock-monitor.removeStock",
+        "title": "移除监控股票"
+      },
+      {
+        "command": "stock-monitor.showStocks",
+        "title": "查看监控列表"
+      },
+      {
+        "command": "stock-monitor.toggleMonitor",
+        "title": "启动/停止监控"
+      }
+    ],
+    "configuration": {
+      "title": "股票监控",
+      "properties": {
+        "stockMonitor.refreshInterval": {
+          "type": "number",
+          "default": 3000,
+          "description": "刷新间隔（毫秒）"
+        },
+        "stockMonitor.fallbackThreshold": {
+          "type": "number",
+          "default": 2,
+          "description": "默认回落提醒阈值（%）"
+        },
+        "stockMonitor.apiSource": {
+          "type": "string",
+          "enum": [
+            "sina",
+            "xueqiu"
+          ],
+          "default": "sina",
+          "description": "行情数据源"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

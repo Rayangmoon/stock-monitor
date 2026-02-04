@@ -1,0 +1,17 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.eslintrc.json
+tsconfig.json
+**/*.ts
+**/*.map
+.git
+node_modules/**/*.md
+*.vsix
+verify.sh
+package.sh
+PROJECT_*.md
+QUICKSTART.md
+GETTING_STARTED.md
+.DS_Store
