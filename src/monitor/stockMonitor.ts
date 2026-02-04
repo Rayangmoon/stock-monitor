@@ -117,6 +117,38 @@ export class StockMonitor {
   }
 
   /**
+   * 将股票置顶（移动到第一位）
+   */
+  async pinStock(code: string): Promise<void> {
+    const config = this.configs.get(code);
+    if (!config) {
+      return;
+    }
+
+    // 获取所有配置并转为数组
+    const allConfigs = Array.from(this.configs.values());
+
+    // 找到要置顶的股票
+    const targetIndex = allConfigs.findIndex(c => c.code === code);
+    if (targetIndex === -1 || targetIndex === 0) {
+      return; // 已经在第一位或不存在
+    }
+
+    // 移除并插入到第一位
+    const [targetConfig] = allConfigs.splice(targetIndex, 1);
+    allConfigs.unshift(targetConfig);
+
+    // 重建 Map（保持新顺序）
+    this.configs.clear();
+    allConfigs.forEach(config => {
+      this.configs.set(config.code, config);
+    });
+
+    // 保存
+    await this.saveConfigs();
+  }
+
+  /**
    * 获取所有监控配置
    */
   getConfigs(): MonitorConfig[] {
@@ -131,10 +163,14 @@ export class StockMonitor {
   }
 
   /**
-   * 获取所有监控状态
+   * 获取所有监控状态（按配置顺序返回）
    */
   getAllStates(): MonitorState[] {
-    return Array.from(this.states.values());
+    // 按照 configs 的顺序返回 states
+    const configs = Array.from(this.configs.values());
+    return configs
+      .map(config => this.states.get(config.code))
+      .filter((state): state is MonitorState => state !== undefined);
   }
 
   /**
