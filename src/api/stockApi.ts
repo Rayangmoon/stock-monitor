@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as iconv from 'iconv-lite';
 import { StockData } from '../types';
 
 /**
@@ -23,13 +24,16 @@ export class SinaAPI extends StockAPI {
       const fullCode = this.formatStockCode(code);
       const response = await axios.get(`${this.baseUrl}${fullCode}`, {
         timeout: 5000,
+        responseType: 'arraybuffer', // 获取原始二进制数据
         headers: {
           // eslint-disable-next-line @typescript-eslint/naming-convention
           'Referer': 'https://finance.sina.com.cn'
         }
       });
 
-      return this.parseResponse(code, response.data);
+      // 将 GBK 编码转换为 UTF-8
+      const data = iconv.decode(Buffer.from(response.data), 'gbk');
+      return this.parseResponse(code, data);
     } catch (error) {
       console.error(`新浪API获取股票数据失败 [${code}]:`, error);
       return null;

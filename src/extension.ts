@@ -32,47 +32,55 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const name = await vscode.window.showInputBox({
-        prompt: '请输入股票名称',
-        placeHolder: '股票名称'
-      });
+      // 显示加载提示
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `正在获取股票 ${code} 的信息...`,
+        cancellable: false
+      }, async () => {
+        // 先获取股票信息以获取名称
+        const stockInfo = await monitor.fetchStockInfo(code);
 
-      if (!name) {
-        return;
-      }
+        if (!stockInfo) {
+          vscode.window.showErrorMessage(`无法获取股票 ${code} 的数据，请检查代码是否正确`);
+          return;
+        }
 
-      const thresholdStr = await vscode.window.showInputBox({
-        prompt: '请输入回落提醒阈值（%）',
-        placeHolder: '默认为2%',
-        validateInput: (value) => {
-          if (value && (isNaN(Number(value)) || Number(value) <= 0)) {
-            return '请输入大于0的数字';
+
+        // 询问回落阈值
+        const thresholdStr = await vscode.window.showInputBox({
+          prompt: `请输入 ${stockInfo.name} (${code}) 的回落提醒阈值（%）`,
+          placeHolder: '默认为2%',
+          validateInput: (value) => {
+            if (value && (isNaN(Number(value)) || Number(value) <= 0)) {
+              return '请输入大于0的数字';
+            }
+            return null;
           }
-          return null;
+        });
+
+        const threshold = thresholdStr ? Number(thresholdStr) : undefined;
+
+        const success = await monitor.addStock(code, stockInfo.name, threshold);
+        if (success) {
+          vscode.window.showInformationMessage(`已添加监控: ${stockInfo.name} (${code})`);
+          statusBarManager.update();
+
+          // 如果监控未启动，询问是否启动
+          if (!monitor.isMonitoring()) {
+            const start = await vscode.window.showInformationMessage(
+              '监控已停止，是否立即启动？',
+              '启动',
+              '稍后'
+            );
+            if (start === '启动') {
+              vscode.commands.executeCommand('stock-monitor.toggleMonitor');
+            }
+          }
+        } else {
+          vscode.window.showErrorMessage(`添加失败: 无法获取股票 ${code} 的数据`);
         }
       });
-
-      const threshold = thresholdStr ? Number(thresholdStr) : undefined;
-
-      const success = await monitor.addStock(code, name, threshold);
-      if (success) {
-        vscode.window.showInformationMessage(`已添加监控: ${name} (${code})`);
-        statusBarManager.update();
-
-        // 如果监控未启动，询问是否启动
-        if (!monitor.isMonitoring()) {
-          const start = await vscode.window.showInformationMessage(
-            '监控已停止，是否立即启动？',
-            '启动',
-            '稍后'
-          );
-          if (start === '启动') {
-            vscode.commands.executeCommand('stock-monitor.toggleMonitor');
-          }
-        }
-      } else {
-        vscode.window.showErrorMessage(`添加失败: 无法获取股票 ${code} 的数据`);
-      }
     }
   );
 
@@ -107,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
   // 注册命令：查看监控列表
   const showStocksCommand = vscode.commands.registerCommand(
     'stock-monitor.showStocks',
-    () => {
+    async () => {
       const configs = monitor.getConfigs();
       if (configs.length === 0) {
         vscode.window.showInformationMessage('暂无监控股票，请先添加');
@@ -125,17 +133,77 @@ export function activate(context: vscode.ExtensionContext) {
           label: `${config.name} (${config.code})`,
           description: status,
           detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'}`,
-          code: config.code
+          code: config.code,
+          buttons: [
+            {
+              iconPath: new vscode.ThemeIcon('trash'),
+              tooltip: '删除此股票'
+            }
+          ]
         };
       });
 
-      vscode.window.showQuickPick(items, {
-        placeHolder: '监控列表'
-      }).then(selected => {
+      const quickPick = vscode.window.createQuickPick();
+      quickPick.items = items;
+      quickPick.placeholder = '监控列表 - 点击查看详情，点击垃圾桶删除';
+      quickPick.canSelectMany = false;
+
+      // 处理选择事件（查看详情）
+      quickPick.onDidAccept(() => {
+        const selected = quickPick.selectedItems[0];
         if (selected) {
-          showStockDetail(selected.code);
+          showStockDetail((selected as any).code);
+        }
+        quickPick.hide();
+      });
+
+      // 处理按钮点击事件（删除）
+      quickPick.onDidTriggerItemButton(async (e) => {
+        const item = e.item as any;
+        const result = await vscode.window.showWarningMessage(
+          `确定要删除 ${item.label.replace('$(close) ', '')} 吗？`,
+          '确定',
+          '取消'
+        );
+
+        if (result === '确定') {
+          await monitor.removeStock(item.code);
+          vscode.window.showInformationMessage(`已删除: ${item.label.replace('$(close) ', '')}`);
+          statusBarManager.update();
+
+          // 刷新列表
+          const newConfigs = monitor.getConfigs();
+          if (newConfigs.length === 0) {
+            quickPick.hide();
+            vscode.window.showInformationMessage('已删除所有监控股票');
+          } else {
+            // 重新生成列表
+            const newStates = monitor.getAllStates();
+            const newItems = newConfigs.map(config => {
+              const state = newStates.find(s => s.code === config.code);
+              const status = state
+                ? `当前: ${state.changePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
+                : '暂无数据';
+
+              return {
+                label: `$(close) ${config.name} (${config.code})`,
+                description: status,
+                detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'}`,
+                code: config.code,
+                buttons: [
+                  {
+                    iconPath: new vscode.ThemeIcon('trash'),
+                    tooltip: '删除此股票'
+                  }
+                ]
+              };
+            });
+            quickPick.items = newItems;
+          }
         }
       });
+
+      quickPick.show();
     }
   );
 

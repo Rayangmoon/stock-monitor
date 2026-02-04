@@ -61,6 +61,22 @@ export class StockMonitor {
   }
 
   /**
+   * 获取股票信息（用于添加股票时自动获取名称）
+   */
+  async fetchStockInfo(code: string): Promise<{ name: string } | null> {
+    try {
+      const stockData = await this.api.fetchStockData(code);
+      if (stockData) {
+        return { name: stockData.name };
+      }
+      return null;
+    } catch (error) {
+      console.error(`获取股票信息失败 [${code}]:`, error);
+      return null;
+    }
+  }
+
+  /**
    * 添加监控股票
    */
   async addStock(
