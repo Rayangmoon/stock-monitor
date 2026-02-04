@@ -233,10 +233,6 @@ export class StockMonitor {
     this.loadRefreshInterval();
     this.api = this.createAPI();
 
-    this.timer = setInterval(() => {
-      this.tick();
-    }, this.refreshInterval);
-
     // 立即执行一次
     this.tick();
   }
@@ -245,11 +241,11 @@ export class StockMonitor {
    * 停止监控
    */
   stop(): void {
+    this.isRunning = false;
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
-    this.isRunning = false;
   }
 
   /**
@@ -260,9 +256,58 @@ export class StockMonitor {
   }
 
   /**
+   * 判断是否在交易时间内
+   * A股交易时间：
+   * 周一至周五 09:30-11:30, 13:00-15:00
+   * 排除节假日（简化处理，不考虑节假日）
+   */
+  private isMarketOpen(): boolean {
+    const now = new Date();
+    const day = now.getDay(); // 0=周日, 1-5=周一至周五, 6=周六
+
+    // 周末不交易
+    if (day === 0 || day === 6) {
+      return false;
+    }
+
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const time = hour * 100 + minute; // 转换为 HHMM 格式
+
+    // 上午：09:30-11:30
+    if (time >= 930 && time <= 1130) {
+      return true;
+    }
+
+    // 下午：13:00-15:00
+    if (time >= 1300 && time <= 1500) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 获取下次刷新的间隔时间
+   * 交易时间内：使用配置的刷新间隔
+   * 非交易时间：使用较长的间隔（5分钟）
+   */
+  private getRefreshInterval(): number {
+    if (this.isMarketOpen()) {
+      return this.refreshInterval; // 交易时间：3秒
+    } else {
+      return 5 * 60 * 1000; // 非交易时间：5分钟
+    }
+  }
+
+  /**
    * 监控周期
    */
   private async tick(): Promise<void> {
+    if (!this.isRunning) {
+      return;
+    }
+
     const codes = Array.from(this.configs.keys());
 
     for (const code of codes) {
@@ -285,6 +330,12 @@ export class StockMonitor {
         console.error(`监控股票 ${code} 失败:`, error);
       }
     }
+
+    // 根据交易时间动态设置下次刷新间隔
+    const nextInterval = this.getRefreshInterval();
+    this.timer = setTimeout(() => {
+      this.tick();
+    }, nextInterval);
   }
 
   /**
