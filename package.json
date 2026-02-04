@@ -4,6 +4,7 @@
   "description": "A股实时监控，最高涨幅回落提醒",
   "version": "0.0.2",
   "publisher": "moon",
+  "icon": "icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rayangmoon/stock-monitor"
