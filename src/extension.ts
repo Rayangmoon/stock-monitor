@@ -128,13 +128,18 @@ export function activate(context: vscode.ExtensionContext) {
         const status = state
           ? `当前: ${state.changePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
           : '暂无数据';
+        const alertEnabled = monitor.isAlertEnabled(config.code);
 
         return {
           label: `${config.name} (${config.code})`,
           description: status,
-          detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'}`,
+          detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'} | 提醒: ${alertEnabled ? '开' : '关'}`,
           code: config.code,
           buttons: [
+            {
+              iconPath: new vscode.ThemeIcon(alertEnabled ? 'bell' : 'bell-slash'),
+              tooltip: alertEnabled ? '关闭提醒' : '开启提醒'
+            },
             {
               iconPath: new vscode.ThemeIcon('pin'),
               tooltip: index === 0 ? '已置顶' : '置顶此股票'
@@ -149,7 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const quickPick = vscode.window.createQuickPick();
       quickPick.items = items;
-      quickPick.placeholder = '监控列表 - 点击查看详情，点击图钉置顶，点击垃圾桶删除';
+      quickPick.placeholder = '监控列表 - 点击查看详情';
       quickPick.canSelectMany = false;
 
       // 处理选择事件（查看详情）
@@ -161,18 +166,13 @@ export function activate(context: vscode.ExtensionContext) {
         quickPick.hide();
       });
 
-      // 处理按钮点击事件（置顶和删除）
+      // 处理按钮点击事件（提醒开关、置顶和删除）
       quickPick.onDidTriggerItemButton(async (e) => {
         const item = e.item as any;
         const buttonIndex = (e.item as any).buttons.indexOf(e.button);
 
-        // 第一个按钮：置顶
-        if (buttonIndex === 0) {
-          await monitor.pinStock(item.code);
-          vscode.window.showInformationMessage(`已置顶: ${item.label}`);
-          statusBarManager.update();
-
-          // 刷新列表
+        // 辅助函数：刷新列表
+        const refreshList = () => {
           const newConfigs = monitor.getConfigs();
           const newStates = monitor.getAllStates();
           const newItems = newConfigs.map((config, index) => {
@@ -180,13 +180,18 @@ export function activate(context: vscode.ExtensionContext) {
             const status = state
               ? `当前: ${state.changePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
               : '暂无数据';
+            const alertEnabled = monitor.isAlertEnabled(config.code);
 
             return {
               label: `${config.name} (${config.code})`,
               description: status,
-              detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'}`,
+              detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'} | 提醒: ${alertEnabled ? '开' : '关'}`,
               code: config.code,
               buttons: [
+                {
+                  iconPath: new vscode.ThemeIcon(alertEnabled ? 'bell' : 'bell-slash'),
+                  tooltip: alertEnabled ? '关闭提醒' : '开启提醒'
+                },
                 {
                   iconPath: new vscode.ThemeIcon('pin'),
                   tooltip: index === 0 ? '已置顶' : '置顶此股票'
@@ -198,10 +203,26 @@ export function activate(context: vscode.ExtensionContext) {
               ]
             };
           });
-          quickPick.items = newItems;
+          return newItems;
+        };
+
+        // 第一个按钮：提醒开关
+        if (buttonIndex === 0) {
+          const newState = monitor.toggleAlert(item.code);
+          vscode.window.showInformationMessage(
+            `${item.label} 提醒已${newState ? '开启' : '关闭'}`
+          );
+          quickPick.items = refreshList();
         }
-        // 第二个按钮：删除
+        // 第二个按钮：置顶
         else if (buttonIndex === 1) {
+          await monitor.pinStock(item.code);
+          vscode.window.showInformationMessage(`已置顶: ${item.label}`);
+          statusBarManager.update();
+          quickPick.items = refreshList();
+        }
+        // 第三个按钮：删除
+        else if (buttonIndex === 2) {
           const result = await vscode.window.showWarningMessage(
             `确定要删除 ${item.label} 吗？`,
             '确定',
@@ -213,38 +234,12 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage(`已删除: ${item.label}`);
             statusBarManager.update();
 
-            // 刷新列表
             const newConfigs = monitor.getConfigs();
             if (newConfigs.length === 0) {
               quickPick.hide();
               vscode.window.showInformationMessage('已删除所有监控股票');
             } else {
-              // 重新生成列表
-              const newStates = monitor.getAllStates();
-              const newItems = newConfigs.map((config, index) => {
-                const state = newStates.find(s => s.code === config.code);
-                const status = state
-                  ? `当前: ${state.changePercent.toFixed(2)}% | 最高: ${state.maxRisePercent.toFixed(2)}% | 回落: ${state.fallbackPercent.toFixed(2)}%`
-                  : '暂无数据';
-
-                return {
-                  label: `${config.name} (${config.code})`,
-                  description: status,
-                  detail: `回落阈值: ${config.fallbackThreshold}% | ${config.enabled ? '✓ 已启用' : '✗ 已禁用'}`,
-                  code: config.code,
-                  buttons: [
-                    {
-                      iconPath: new vscode.ThemeIcon('pin'),
-                      tooltip: index === 0 ? '已置顶' : '置顶此股票'
-                    },
-                    {
-                      iconPath: new vscode.ThemeIcon('trash'),
-                      tooltip: '删除此股票'
-                    }
-                  ]
-                };
-              });
-              quickPick.items = newItems;
+              quickPick.items = refreshList();
             }
           }
         }

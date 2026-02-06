@@ -37,4 +37,6 @@ export interface MonitorState {
   currentRisePercent: number; // 当前涨幅（相对开盘价，%）
   fallbackPercent: number;  // 回落幅度（%）
   lastAlertTime?: number;   // 上次提醒时间
+  mutedUntil?: number;      // 静音到期时间（今日不再提醒）
+  alertEnabled: boolean;    // 是否开启提醒
 }

@@ -189,6 +189,7 @@ export class StockMonitor {
         stockData.openPrice
       ),
       fallbackPercent: 0,
+      alertEnabled: true, // 默认开启提醒
     };
 
     this.states.set(stockData.code, state);
@@ -253,6 +254,21 @@ export class StockMonitor {
       return false;
     }
 
+    // 检查是否关闭了提醒
+    if (!state.alertEnabled) {
+      return false;
+    }
+
+    // 非交易时间不提醒
+    if (!this.isMarketOpen()) {
+      return false;
+    }
+
+    // 检查是否被静音（今日不再提醒）
+    if (state.mutedUntil && Date.now() < state.mutedUntil) {
+      return false;
+    }
+
     // 只有在有涨幅的情况下才检查回落
     if (state.maxRisePercent <= 0) {
       return false;
@@ -271,6 +287,47 @@ export class StockMonitor {
     }
 
     return false;
+  }
+
+  /**
+   * 设置股票今日不再提醒
+   */
+  muteStockToday(code: string): void {
+    const state = this.states.get(code);
+    if (state) {
+      // 设置静音到今天收盘后（15:00）
+      const now = new Date();
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 0, 0);
+      // 如果已经过了15:00，设置到明天15:00
+      if (now.getTime() > endOfDay.getTime()) {
+        endOfDay.setDate(endOfDay.getDate() + 1);
+      }
+      state.mutedUntil = endOfDay.getTime();
+    }
+  }
+
+  /**
+   * 切换股票提醒开关
+   */
+  toggleAlert(code: string): boolean {
+    const state = this.states.get(code);
+    if (state) {
+      state.alertEnabled = !state.alertEnabled;
+      // 如果开启提醒，清除静音状态
+      if (state.alertEnabled) {
+        state.mutedUntil = undefined;
+      }
+      return state.alertEnabled;
+    }
+    return false;
+  }
+
+  /**
+   * 获取股票提醒状态
+   */
+  isAlertEnabled(code: string): boolean {
+    const state = this.states.get(code);
+    return state?.alertEnabled ?? true;
   }
 
   /**
@@ -408,9 +465,12 @@ export class StockMonitor {
       `回落幅度: ${state.fallbackPercent.toFixed(2)}%\n` +
       `当前价格: ${state.currentPrice.toFixed(2)}`;
 
-    vscode.window.showWarningMessage(message, "查看详情").then((selection) => {
+    vscode.window.showWarningMessage(message, "查看详情", "今日不再提醒").then((selection) => {
       if (selection === "查看详情") {
         this.showStockDetail(code);
+      } else if (selection === "今日不再提醒") {
+        this.muteStockToday(code);
+        vscode.window.showInformationMessage(`${config.name} 今日将不再提醒`);
       }
     });
   }
